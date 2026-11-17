@@ -1,0 +1,29 @@
+version: 0.2
+env:
+  variables:
+    ECR_REPO: demo-app
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+  pre_build:
+    commands:
+      - pip install -r requirements.txt
+      - pytest -q
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REGISTRY=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - aws ecr get-login-password | docker login --username AWS --password-stdin $REGISTRY
+      - TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+  build:
+    commands:
+      - docker build -t $REGISTRY/$ECR_REPO:$TAG .
+      - docker push $REGISTRY/$ECR_REPO:$TAG
+  post_build:
+    commands:
+      - echo $REGISTRY/$ECR_REPO:$TAG > image.txt
+      - echo $TAG > version.txt
+artifacts:
+  files:
+    - image.txt
+    - version.txt
+    - k8s/**/*
