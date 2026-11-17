@@ -1,0 +1,14 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata: {name: demo-vs, namespace: demo}
+spec:
+  hosts: ['*']
+  gateways: [demo-gateway]
+  http:
+  - match:
+    - headers:
+        x-preview: {exact: 'true'}
+    route:
+    - destination: {host: demo-app-preview, port: {number: 80}}
+  - route:
+    - destination: {host: demo-app-active, port: {number: 80}}
