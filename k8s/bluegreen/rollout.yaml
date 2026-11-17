@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata: {name: demo-app, namespace: demo}
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: demo-app}
+  template:
+    metadata:
+      labels: {app: demo-app}
+    spec:
+      containers:
+      - name: app
+        image: IMAGE_PLACEHOLDER
+        ports: [{containerPort: 5000}]
+        env:
+        - {name: APP_VERSION, value: VERSION_PLACEHOLDER}
+        readinessProbe:
+          httpGet: {path: /healthz, port: 5000}
+  strategy:
+    blueGreen:
+      activeService: demo-app-active
+      previewService: demo-app-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 300
