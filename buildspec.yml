@@ -24,6 +24,7 @@ phases:
       - echo $TAG > version.txt
 artifacts:
   files:
+    - deploy-buildspec.yml
     - image.txt
     - version.txt
     - k8s/**/*
