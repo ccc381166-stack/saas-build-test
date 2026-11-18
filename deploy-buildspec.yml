@@ -10,6 +10,8 @@ phases:
       - IMAGE=$(cat image.txt)
       - VERSION=$(cat version.txt)
       - sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|; s|VERSION_PLACEHOLDER|$VERSION|" k8s/$STRATEGY/rollout.yaml
-      - kubectl apply -f k8s/common/
-      - kubectl apply -f k8s/$STRATEGY/
+      - kubectl apply -f k8s/common/namespace.yaml
+      - kubectl wait --for=jsonpath='{.status.phase}'=Active namespace/demo --timeout=60s
+      - kubectl apply -f k8s/common/gateway.yaml
+      - kubectl apply -f "k8s/$STRATEGY/"
       - kubectl -n demo get rollout
