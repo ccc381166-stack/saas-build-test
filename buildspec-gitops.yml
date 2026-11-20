@@ -1,0 +1,65 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    ECR_REPOSITORY_URI: "422271169533.dkr.ecr.us-east-1.amazonaws.com/demo-app"
+    GITOPS_REPO_URL: "https://github.com/ccc381166-stack/saas-demo-gitops.git"
+    GITOPS_BRANCH: "main"
+  secrets-manager:
+    GITOPS_TOKEN: "/CodeBuild/saas-demo/gitops-writer:token"
+
+phases:
+  build:
+    commands:
+      - |
+        set -euo pipefail
+
+        image=$(cat "$CODEBUILD_SRC_DIR/image.txt")
+        version=$(cat "$CODEBUILD_SRC_DIR/version.txt")
+        if [[ ! "$version" =~ ^[0-9a-f]{7}$ || "$image" != "$ECR_REPOSITORY_URI:$version" ]]; then
+          printf 'BuildArtifact must contain a matching demo-app image and seven-character Git SHA.\n' >&2
+          exit 1
+        fi
+
+        work_dir=$(mktemp -d)
+        trap 'rm -rf -- "$work_dir"' EXIT
+        export LC_ALL=C
+        export GIT_ASKPASS="$work_dir/askpass"
+        export GIT_TERMINAL_PROMPT=0
+
+        cat > "$GIT_ASKPASS" <<'ASKPASS'
+        #!/bin/sh
+        case "$1" in
+          *Username*) printf '%s\n' 'x-access-token' ;;
+          *Password*) printf '%s\n' "$GITOPS_TOKEN" ;;
+          *) exit 1 ;;
+        esac
+        ASKPASS
+        chmod 700 "$GIT_ASKPASS"
+
+        git -c credential.helper= clone --single-branch --branch "$GITOPS_BRANCH" \
+          "$GITOPS_REPO_URL" "$work_dir/gitops"
+
+        cd "$work_dir/gitops"
+        release_file=apps/demo-gitops/release.json
+        jq -e --arg image "$image" --arg version "$version" '
+          if .[0].path == "/spec/template/spec/containers/0/image"
+             and .[1].path == "/spec/template/spec/containers/0/env/0/value"
+          then .[0].value = $image | .[1].value = $version
+          else error("unexpected release.json patch structure")
+          end
+        ' "$release_file" > "$work_dir/release.json"
+        mv "$work_dir/release.json" "$release_file"
+
+        if git diff --quiet -- "$release_file"; then
+          printf 'GitOps already targets %s\n' "$version"
+          exit 0
+        fi
+
+        git config user.name "CodeBuild GitOps"
+        git config user.email "codebuild-gitops@example.invalid"
+        git add -- "$release_file"
+        git commit -m "Release demo-app $version"
+        git -c credential.helper= push origin "HEAD:refs/heads/$GITOPS_BRANCH"
+        printf 'Updated GitOps branch %s to %s\n' "$GITOPS_BRANCH" "$version"
