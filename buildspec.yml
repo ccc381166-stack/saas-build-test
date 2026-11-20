@@ -28,3 +28,4 @@ artifacts:
     - image.txt
     - version.txt
     - k8s/**/*
+    - buildspec-gitops.yml
