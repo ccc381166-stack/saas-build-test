@@ -6,8 +6,8 @@ VERSION = os.getenv('APP_VERSION', 'dev')
 
 @app.get('/')
 def index():
-    return jsonify(message='hello saas d', version=VERSION)
+    return jsonify(message='hello saas', version=VERSION)
 
 @app.get('/healthz')
 def healthz():
-    return 'okokokok'
+    return 'okokokok1'
