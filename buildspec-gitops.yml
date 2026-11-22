@@ -6,6 +6,7 @@ env:
     ECR_REPOSITORY_URI: "422271169533.dkr.ecr.us-east-1.amazonaws.com/demo-app"
     GITOPS_REPO_URL: "https://github.com/ccc381166-stack/saas-demo-gitops.git"
     GITOPS_BRANCH: "main"
+    GITOPS_RELEASE_TARGET: "canary"
   secrets-manager:
     GITOPS_TOKEN: "/CodeBuild/saas-demo/gitops-writer:token"
 
@@ -14,6 +15,13 @@ phases:
     commands:
       - |
         set -euo pipefail
+
+        case "$GITOPS_RELEASE_TARGET" in
+          canary) release_files=(apps/demo-gitops/release.json) ;;
+          bluegreen) release_files=(apps/demo-gitops-bluegreen/release.json) ;;
+          both) release_files=(apps/demo-gitops/release.json apps/demo-gitops-bluegreen/release.json) ;;
+          *) printf 'GITOPS_RELEASE_TARGET must be canary, bluegreen, or both.\n' >&2; exit 1 ;;
+        esac
 
         image=$(cat "$CODEBUILD_SRC_DIR/image.txt")
         version=$(cat "$CODEBUILD_SRC_DIR/version.txt")
@@ -42,24 +50,25 @@ phases:
           "$GITOPS_REPO_URL" "$work_dir/gitops"
 
         cd "$work_dir/gitops"
-        release_file=apps/demo-gitops/release.json
-        jq -e --arg image "$image" --arg version "$version" '
-          if .[0].path == "/spec/template/spec/containers/0/image"
-             and .[1].path == "/spec/template/spec/containers/0/env/0/value"
-          then .[0].value = $image | .[1].value = $version
-          else error("unexpected release.json patch structure")
-          end
-        ' "$release_file" > "$work_dir/release.json"
-        mv "$work_dir/release.json" "$release_file"
+        for release_file in "${release_files[@]}"; do
+          jq -e --arg image "$image" --arg version "$version" '
+            if .[0].path == "/spec/template/spec/containers/0/image"
+               and .[1].path == "/spec/template/spec/containers/0/env/0/value"
+            then .[0].value = $image | .[1].value = $version
+            else error("unexpected release.json patch structure")
+            end
+          ' "$release_file" > "$work_dir/release.json"
+          mv "$work_dir/release.json" "$release_file"
+          git add -- "$release_file"
+        done
 
-        if git diff --quiet -- "$release_file"; then
+        if git diff --cached --quiet; then
           printf 'GitOps already targets %s\n' "$version"
           exit 0
         fi
 
         git config user.name "CodeBuild GitOps"
         git config user.email "codebuild-gitops@example.invalid"
-        git add -- "$release_file"
         git commit -m "Release demo-app $version"
         git -c credential.helper= push origin "HEAD:refs/heads/$GITOPS_BRANCH"
         printf 'Updated GitOps branch %s to %s\n' "$GITOPS_BRANCH" "$version"
