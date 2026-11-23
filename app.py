@@ -10,4 +10,4 @@ def index():
 
 @app.get('/healthz')
 def healthz():
-    return 'okokokok12'
+    return 'okokokok123'
